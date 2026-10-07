@@ -355,6 +355,12 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: 'Something went wrong on the admin server.' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Admin server is running on http://localhost:${PORT}`);
-});
+// On Vercel the default export is run as a serverless function, so there's
+// no port to listen on; locally (npm run dev) it's a normal server.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Admin server is running on http://localhost:${PORT}`);
+  });
+}
+
+export default app;
