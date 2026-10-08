@@ -353,6 +353,11 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
       error: "It's used by existing install requests, so it can't be deleted. Change its price instead.",
     });
   }
+  if ((err as { constraint?: string }).constraint === 'starlight_add_on_price_sign') {
+    return res.status(400).json({
+      error: 'No twinkle is a discount, so enter it as 0 or a negative price (e.g. -80). Other starlight add-ons can\'t be negative.',
+    });
+  }
   if (code === '23514' || code === '22P02') {
     return res.status(400).json({ error: 'That value is not allowed.' });
   }
