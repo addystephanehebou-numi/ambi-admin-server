@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Enum values must match the Postgres enums in ambi-client/db/001_schema.sql.
-export const ADD_ON_KINDS = ['handles', 'storage', 'footwell', 'extraDashStrip'] as const;
+export const ADD_ON_KINDS = ['handles', 'storage', 'footwell', 'extraDashStrip', 'speakerRingLights'] as const;
 export const COLOR_NAMES = ['red', 'blue', 'green', 'violet'] as const;
 // ambi-client/db/010_starlight_add_ons.sql
 export const STARLIGHT_ADD_ON_KINDS = [
