@@ -272,7 +272,7 @@ app.get('/api/businesses/:id/requests', async (req, res) => {
 
   const rows = await sql`
     select r.id, r.status, r.created_at, r.selected_installation_method,
-           r.preferred_date_start_time, r.preferred_date_end_time,
+           r.preferred_date_start_time, r.preferred_date_end_time, r.install_days,
            c.first_name, c.last_name, c.email, c.phone,
            v.year, v.make, v.model,
            q.total::float8 as quote_total
