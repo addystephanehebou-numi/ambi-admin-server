@@ -84,6 +84,10 @@ const businessSchema = z.object({
   warranty_price: z.union([z.literal(''), z.null(), z.coerce.number().min(0)]).transform((value) =>
     value === '' ? null : value,
   ),
+  // 'in_app': the lights are recolored from a Bluetooth app after install, so
+  // the install flow shows a note instead of a color picker. The business's
+  // color rows are kept either way. See ambi-client/db/009_color_selection.sql.
+  color_selection: z.enum(['at_booking', 'in_app']),
   // Where new-request notifications go; empty means the business isn't emailed.
   email: z.union([z.email(), z.literal('')]).transform((value) => value || null),
   // Which installs the business offers; the travel fee only applies to mobile ones.
@@ -143,7 +147,7 @@ app.get('/api/businesses/:id', async (req, res) => {
            b.travel_fee_value::float8 as travel_fee_value, b.soonest_start_days_in_advance,
            b.sales_type, b.description, coalesce(b.contains_warranty, false) as contains_warranty,
            coalesce(b.warranty_name, '') as warranty_name, b.warranty_price::float8 as warranty_price,
-           b.created_at,
+           b.color_selection, b.created_at,
            json_build_object(
              'street_address', a.street_address,
              'extended_address', coalesce(a.extended_address, ''),
@@ -192,13 +196,13 @@ app.post('/api/businesses', async (req, res) => {
     sql`insert into business (id, business_owner_customer_id, name, email, business_address_id,
                               service_modes, travel_fee_value, soonest_start_days_in_advance,
                               sales_type, description, contains_warranty, warranty_name, warranty_price,
-                              logo_url)
+                              color_selection, logo_url)
         values (${businessId}, ${ownerId}, ${business.name}, ${business.email}, ${addressId},
                 ${business.service_modes}, ${business.travel_fee_value},
                 ${business.soonest_start_days_in_advance},
                 ${business.sales_type}, ${business.description}, ${business.contains_warranty},
                 ${business.warranty_name}, ${business.warranty_price},
-                ${business.logo_url})`,
+                ${business.color_selection}, ${business.logo_url})`,
   ]);
   res.status(201).json({ id: businessId });
 });
@@ -218,6 +222,7 @@ app.put('/api/businesses/:id', async (req, res) => {
           sales_type = ${business.sales_type}, description = ${business.description},
           contains_warranty = ${business.contains_warranty},
           warranty_name = ${business.warranty_name}, warranty_price = ${business.warranty_price},
+          color_selection = ${business.color_selection},
           logo_url = ${business.logo_url}
         where id = ${id} returning id`,
     sql`update address set street_address = ${address.street_address},
