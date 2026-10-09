@@ -69,11 +69,16 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
     }),
     orderBy: 'name',
   },
-  door: {
-    table: 'door_lighting_package',
-    columns: ['quantity', 'price'],
-    schema: z.object({ quantity: positiveInt, price: money }),
-    orderBy: 'quantity',
+  // Ambient lighting packages for 'basic' businesses (db/013); same shape as customTier.
+  ambientPackage: {
+    table: 'ambient_lighting_package',
+    columns: ['name', 'price', 'description'],
+    schema: z.object({
+      name: z.string().trim().min(1).max(80),
+      price: money,
+      description: z.string().trim().max(500),
+    }),
+    orderBy: 'price, name',
   },
   addOn: {
     table: 'add_on_package',

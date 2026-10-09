@@ -73,7 +73,7 @@ const businessSchema = z.object({
   logo_url: z
     .union([z.url({ protocol: /^https$/, error: 'Use an https:// image URL' }), z.literal('')])
     .transform((value) => value || null),
-  // 'basic' sells the fixed headliner/door/add-on menu; 'custom' sells the
+  // 'basic' sells the headliner/ambient package/add-on menu; 'custom' sells the
   // business's own package tiers. See ambi-client/db/006_custom_packages.sql.
   sales_type: z.enum(['basic', 'custom']),
   description: z.string().trim().max(1000),
