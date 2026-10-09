@@ -23,6 +23,10 @@ const positiveInt = z.coerce.number().int().positive();
 const nonNegativeInt = z.coerce.number().int().min(0);
 // Consecutive days an install takes (db/012); matches the database's 1–14 check.
 const installDays = z.coerce.number().int().min(1).max(14);
+// How many of an add-on a package includes, up to that add-on's limit
+// (ADD_ON_MAX_QUANTITY in ambi-client/lib/pricing.ts). No .default(0): under
+// the PATCH route's .partial() it would reset quantities that weren't sent.
+const includedQuantity = (max: number) => z.coerce.number().int().min(0).max(max);
 
 interface CatalogKind {
   table: string;
@@ -69,14 +73,29 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
     }),
     orderBy: 'name',
   },
-  // Ambient lighting packages for 'basic' businesses (db/013); same shape as customTier.
+  // Ambient lighting packages for 'basic' businesses (db/013), with the
+  // add-ons each one already includes (db/015).
   ambientPackage: {
     table: 'ambient_lighting_package',
-    columns: ['name', 'price', 'description'],
+    columns: [
+      'name',
+      'price',
+      'description',
+      'included_handles',
+      'included_storage',
+      'included_footwell',
+      'included_extra_dash_strip',
+      'included_speaker_ring_lights',
+    ],
     schema: z.object({
       name: z.string().trim().min(1).max(80),
       price: money,
       description: z.string().trim().max(500),
+      included_handles: includedQuantity(4),
+      included_storage: includedQuantity(4),
+      included_footwell: includedQuantity(6),
+      included_extra_dash_strip: includedQuantity(20),
+      included_speaker_ring_lights: includedQuantity(20),
     }),
     orderBy: 'price, name',
   },
