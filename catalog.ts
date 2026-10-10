@@ -27,6 +27,11 @@ const installDays = z.coerce.number().int().min(1).max(14);
 // (ADD_ON_MAX_QUANTITY in ambi-client/lib/pricing.ts). No .default(0): under
 // the PATCH route's .partial() it would reset quantities that weren't sent.
 const includedQuantity = (max: number) => z.coerce.number().int().min(0).max(max);
+// How much of the business's day a package takes (ambi-client/db/016).
+const duration = z.enum(['block', 'full_day']);
+// "09:00" or "13:30", as an <input type="time"> sends it.
+const clockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time like 09:00');
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-12-25');
 
 interface CatalogKind {
   table: string;
@@ -48,18 +53,19 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
   // Only used by 'custom' businesses (see business.sales_type in db/006).
   customTier: {
     table: 'custom_package_tier',
-    columns: ['name', 'price', 'description'],
+    columns: ['name', 'price', 'duration', 'description'],
     schema: z.object({
       name: z.string().trim().min(1).max(80),
       price: money,
+      duration,
       description: z.string().trim().max(500),
     }),
     orderBy: 'price, name',
   },
   headliner: {
     table: 'starlight_headliner_package',
-    columns: ['quantity', 'price', 'install_days'],
-    schema: z.object({ quantity: positiveInt, price: money, install_days: installDays }),
+    columns: ['quantity', 'price', 'duration', 'install_days'],
+    schema: z.object({ quantity: positiveInt, price: money, duration, install_days: installDays }),
     orderBy: 'quantity',
   },
   // On/off extras for a headliner. is_starting_price shows the price as "From $X".
@@ -80,6 +86,7 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
     columns: [
       'name',
       'price',
+      'duration',
       'description',
       'included_handles',
       'included_storage',
@@ -90,6 +97,7 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
     schema: z.object({
       name: z.string().trim().min(1).max(80),
       price: money,
+      duration,
       description: z.string().trim().max(500),
       included_handles: includedQuantity(4),
       included_storage: includedQuantity(4),
@@ -117,8 +125,29 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
     schema: z.object({ percentage: z.coerce.number().min(0).max(999.99), days_in_advance: nonNegativeInt }),
     orderBy: 'days_in_advance',
   },
+  // The fixed parts of a business's day (ambi-client/db/016). Adding the
+  // first one turns on held times and Confirm/Decline for the business.
+  scheduleBlock: {
+    table: 'schedule_block',
+    columns: ['label', 'start_time', 'end_time'],
+    schema: z.object({ label: z.string().trim().min(1).max(40), start_time: clockTime, end_time: clockTime }),
+    orderBy: 'start_time',
+  },
+  closedDate: {
+    table: 'schedule_closed_date',
+    columns: ['day'],
+    schema: z.object({ day: isoDate }),
+    orderBy: 'day',
+  },
 };
 
-/** numeric columns come back from Postgres as strings; cast them for the client. */
-export const selectColumn = (column: string) =>
-  column === 'price' || column === 'percentage' ? `${column}::float8 as ${column}` : column;
+/**
+ * numeric columns come back from Postgres as strings, so they're cast for
+ * the client; times and dates are formatted the way their inputs take them.
+ */
+export const selectColumn = (column: string) => {
+  if (column === 'price' || column === 'percentage') return `${column}::float8 as ${column}`;
+  if (column === 'start_time' || column === 'end_time') return `to_char(${column}, 'HH24:MI') as ${column}`;
+  if (column === 'day') return `to_char(day, 'YYYY-MM-DD') as day`;
+  return column;
+};

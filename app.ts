@@ -148,6 +148,8 @@ app.get('/api/businesses/:id', async (req, res) => {
            b.sales_type, b.description, coalesce(b.contains_warranty, false) as contains_warranty,
            coalesce(b.warranty_name, '') as warranty_name, b.warranty_price::float8 as warranty_price,
            b.color_selection, b.created_at,
+           b.closed_weekdays::int[] as closed_weekdays,
+           coalesce(to_char(b.full_day_drop_off_time, 'HH24:MI'), '') as full_day_drop_off_time,
            json_build_object(
              'street_address', a.street_address,
              'extended_address', coalesce(a.extended_address, ''),
@@ -265,6 +267,32 @@ app.delete('/api/businesses/:id', async (req, res) => {
   res.status(204).end();
 });
 
+// Schedule ---------------------------------------------------------------
+// Weekly closed days and the full-day drop-off time. Blocks and closed
+// dates are catalog kinds (catalog.ts). See ambi-client/db/016.
+const scheduleSchema = z.object({
+  closed_weekdays: z.array(z.number().int().min(0).max(6)).max(7).transform((days) => [...new Set(days)].sort()),
+  // '' means the first block's start time.
+  full_day_drop_off_time: z
+    .union([z.literal(''), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time like 09:30')])
+    .transform((value) => value || null),
+});
+
+app.put('/api/businesses/:id/schedule', async (req, res) => {
+  const id = idParam(req, 'id');
+  if (!id) return res.status(404).json({ error: 'Business not found.' });
+  const parsed = scheduleSchema.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, parsed.error);
+
+  const [updated] = await sql`
+    update business
+    set closed_weekdays = ${parsed.data.closed_weekdays}::smallint[],
+        full_day_drop_off_time = ${parsed.data.full_day_drop_off_time}
+    where id = ${id} returning id`;
+  if (!updated) return res.status(404).json({ error: 'Business not found.' });
+  res.json({ id });
+});
+
 // Install requests (read-only) ------------------------------------------
 app.get('/api/businesses/:id/requests', async (req, res) => {
   const id = idParam(req, 'id');
@@ -348,10 +376,18 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (code === '23505') {
     return res.status(409).json({ error: 'That already exists for this business.' });
   }
+  if (code === '23503' && (err as { constraint?: string }).constraint === 'schedule_hold_block_id_fkey') {
+    return res.status(409).json({
+      error: "Requests are holding this block, so it can't be deleted. Change its times instead, or delete it once they're past.",
+    });
+  }
   if (code === '23503') {
     return res.status(409).json({
       error: "It's used by existing install requests, so it can't be deleted. Change its price instead.",
     });
+  }
+  if ((err as { constraint?: string }).constraint === 'schedule_block_ordered') {
+    return res.status(400).json({ error: 'A block has to end after it starts.' });
   }
   if ((err as { constraint?: string }).constraint === 'starlight_add_on_price_sign') {
     return res.status(400).json({
