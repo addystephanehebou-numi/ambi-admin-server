@@ -3,7 +3,8 @@ import { z } from 'zod';
 // Enum values must match the Postgres enums in ambi-client/db/001_schema.sql.
 export const ADD_ON_KINDS = ['handles', 'storage', 'footwell', 'extraDashStrip', 'speakerRingLights'] as const;
 export const COLOR_NAMES = ['red', 'blue', 'green', 'violet'] as const;
-// ambi-client/db/010_starlight_add_ons.sql
+// ambi-client/db/010_starlight_add_ons.sql. A business's own add-ons
+// (db/017) are free-text names in the same table, marked custom.
 export const STARLIGHT_ADD_ON_KINDS = [
   'sunroof',
   'dualColorStars',
@@ -41,6 +42,11 @@ interface CatalogKind {
   schema: z.ZodObject<z.ZodRawShape>;
   /** Ordering for list output. */
   orderBy: string;
+  /**
+   * For two kinds sharing a table: a boolean column that must equal `value`.
+   * Lists, updates and deletes only see matching rows, and inserts set it.
+   */
+  scope?: { column: string; value: boolean };
 }
 
 /**
@@ -78,6 +84,21 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
       is_starting_price: flag,
     }),
     orderBy: 'name',
+    scope: { column: 'custom', value: false },
+  },
+  // The business's own starlight add-ons, shown with the built-in ones. Any
+  // price sign, so a discount works too.
+  customStarlightAddOn: {
+    table: 'starlight_add_on_package',
+    columns: ['name', 'price', 'is_starting_price', 'description'],
+    schema: z.object({
+      name: z.string().trim().min(1).max(60),
+      price: signedMoney,
+      is_starting_price: flag,
+      description: z.string().trim().max(300),
+    }),
+    orderBy: 'name',
+    scope: { column: 'custom', value: true },
   },
   // Ambient lighting packages for 'basic' businesses (db/013), with the
   // add-ons each one already includes (db/015).
@@ -125,6 +146,16 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
     schema: z.object({ percentage: z.coerce.number().min(0).max(999.99), days_in_advance: nonNegativeInt }),
     orderBy: 'days_in_advance',
   },
+  // Extra % for a drop-off on a weekday (ambi-client/db/017); stacks with rush.
+  weekdaySurcharge: {
+    table: 'weekday_surcharge',
+    columns: ['weekday', 'percentage'],
+    schema: z.object({
+      weekday: z.coerce.number().int().min(0).max(6),
+      percentage: z.coerce.number().positive().max(999.99),
+    }),
+    orderBy: 'weekday',
+  },
   // The fixed parts of a business's day (ambi-client/db/016). Adding the
   // first one turns on held times and Confirm/Decline for the business.
   scheduleBlock: {
@@ -140,6 +171,10 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
     orderBy: 'day',
   },
 };
+
+/** The scope's SQL condition, ANDed onto a query's where clause ('' without one). */
+export const scopeCondition = (config: CatalogKind) =>
+  config.scope ? ` and ${config.scope.column} = ${config.scope.value}` : '';
 
 /**
  * numeric columns come back from Postgres as strings, so they're cast for

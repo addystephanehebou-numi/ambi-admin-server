@@ -3,7 +3,7 @@ import cors from 'cors';
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import { neon } from '@neondatabase/serverless';
 import { z } from 'zod';
-import { CATALOG_KINDS, selectColumn } from './catalog.js';
+import { CATALOG_KINDS, scopeCondition, selectColumn } from './catalog.js';
 
 const requireEnv = (name: string): string => {
   const value = process.env[name];
@@ -170,7 +170,7 @@ app.get('/api/businesses/:id', async (req, res) => {
     Object.entries(CATALOG_KINDS).map(async ([kind, config]) => {
       catalog[kind] = await sql.query(
         `select id, ${config.columns.map(selectColumn).join(', ')}
-         from ${config.table} where business_id = $1 order by ${config.orderBy}`,
+         from ${config.table} where business_id = $1${scopeCondition(config)} order by ${config.orderBy}`,
         [id],
       );
     }),
@@ -324,9 +324,10 @@ app.post('/api/businesses/:id/catalog/:kind', async (req, res) => {
 
   const values = config.columns.map((column) => parsed.data[column]);
   const placeholders = config.columns.map((_, i) => `$${i + 2}`).join(', ');
+  const scope = config.scope ? { column: `, ${config.scope.column}`, value: `, ${config.scope.value}` } : null;
   const [row] = await sql.query(
-    `insert into ${config.table} (business_id, ${config.columns.join(', ')})
-     values ($1, ${placeholders})
+    `insert into ${config.table} (business_id, ${config.columns.join(', ')}${scope?.column ?? ''})
+     values ($1, ${placeholders}${scope?.value ?? ''})
      returning id, ${config.columns.map(selectColumn).join(', ')}`,
     [id, ...values],
   );
@@ -346,7 +347,7 @@ app.patch('/api/businesses/:id/catalog/:kind/:itemId', async (req, res) => {
   const assignments = columns.map((column, i) => `${column} = $${i + 3}`).join(', ');
   const [row] = await sql.query(
     `update ${config.table} set ${assignments}
-     where id = $1 and business_id = $2
+     where id = $1 and business_id = $2${scopeCondition(config)}
      returning id, ${config.columns.map(selectColumn).join(', ')}`,
     [itemId, id, ...columns.map((column) => parsed.data[column])],
   );
@@ -361,7 +362,7 @@ app.delete('/api/businesses/:id/catalog/:kind/:itemId', async (req, res) => {
   if (!id || !itemId || !config) return res.status(404).json({ error: 'Not found.' });
 
   const deleted = await sql.query(
-    `delete from ${config.table} where id = $1 and business_id = $2 returning id`,
+    `delete from ${config.table} where id = $1 and business_id = $2${scopeCondition(config)} returning id`,
     [itemId, id],
   );
   if (!deleted.length) return res.status(404).json({ error: 'Item not found.' });
@@ -373,6 +374,12 @@ app.delete('/api/businesses/:id/catalog/:kind/:itemId', async (req, res) => {
 // become readable 4xx messages; anything else is a 500.
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const code = (err as { code?: string }).code;
+  if ((err as { constraint?: string }).constraint === 'weekday_surcharge_business_id_weekday_key') {
+    return res.status(409).json({ error: 'That day already has a surcharge. Change its percentage instead.' });
+  }
+  if ((err as { constraint?: string }).constraint === 'starlight_add_on_package_business_id_name_key') {
+    return res.status(409).json({ error: 'This business already has a starlight add-on with that name.' });
+  }
   if (code === '23505') {
     return res.status(409).json({ error: 'That already exists for this business.' });
   }
