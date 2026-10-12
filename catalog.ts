@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Enum values must match the Postgres enums in ambi-client/db/001_schema.sql.
-export const ADD_ON_KINDS = ['handles', 'storage', 'footwell', 'extraDashStrip', 'speakerRingLights'] as const;
+export const ADD_ON_KINDS = ['handles', 'storage', 'footwell', 'extraDashStrip', 'speakerRingLights', 'underglow', 'grille'] as const;
 export const COLOR_NAMES = ['red', 'blue', 'green', 'violet'] as const;
 // ambi-client/db/010_starlight_add_ons.sql. A business's own add-ons
 // (db/017) are free-text names in the same table, marked custom.
@@ -114,6 +114,8 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
       'included_footwell',
       'included_extra_dash_strip',
       'included_speaker_ring_lights',
+      'included_underglow',
+      'included_grille',
     ],
     schema: z.object({
       name: z.string().trim().min(1).max(80),
@@ -125,6 +127,8 @@ export const CATALOG_KINDS: Record<string, CatalogKind> = {
       included_footwell: includedQuantity(6),
       included_extra_dash_strip: includedQuantity(20),
       included_speaker_ring_lights: includedQuantity(20),
+      included_underglow: includedQuantity(1),
+      included_grille: includedQuantity(1),
     }),
     orderBy: 'price, name',
   },
